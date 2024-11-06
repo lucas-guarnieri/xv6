@@ -4,7 +4,7 @@
 
 int main(void)
 {
-    printf(1, "hello world from %d\n", getyear());
+    printf(1, "hello world from the excellent year%d\n", getyear());
 
     exit();
 }
