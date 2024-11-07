@@ -19,31 +19,34 @@ struct Aresta
 };
 
 // Função simples para gerar números aleatórios
-static unsigned long next = 1; // Semente para o gerador
-
+static unsigned long next = 0; // Seed
 int myrandom()
 {
-    next = next * 1103515245 + 12345;        // Geração de um número pseudo-aleatório
-    return (unsigned)(next / 65536) % 32768; // Retorna um número no intervalo [0, 32767]
+    if (next == 0)
+    {
+        next = getpid();
+    }
+    next = next * 1103515245 + 12345;
+    return (unsigned)(next / 65536) % 32768;
 }
 
 // Função para inicializar o grafo com arestas aleatórias
-void inicializar_grafo(struct Aresta arestas[])
+void inicializar_grafo(struct Aresta *arestas, int num_arestas, int num_vertices)
 {
-    for (int i = 0; i < NUM_ARESTAS; i++)
+    for (int i = 0; i < num_arestas; i++)
     {
-        arestas[i].origem = myrandom() % NUM_VERTICES;
-        arestas[i].destino = myrandom() % NUM_VERTICES;
-        arestas[i].peso = 1 + myrandom() % 100; // Peso aleatório entre 1 e 100
+        arestas[i].origem = myrandom() % num_vertices;
+        arestas[i].destino = myrandom() % num_vertices;
+        arestas[i].peso = 1 + myrandom() % 100;
     }
 }
 
 // Função para encontrar o vértice com a menor distância
-int min_distancia(int dist[], int visitado[])
+int min_distancia(int dist[], int visitado[], int num_vertices)
 {
     int min = INF, min_index = -1;
 
-    for (int v = 0; v < NUM_VERTICES; v++)
+    for (int v = 0; v < num_vertices; v++)
     {
         if (!visitado[v] && dist[v] <= min)
         {
@@ -53,30 +56,43 @@ int min_distancia(int dist[], int visitado[])
     return min_index;
 }
 
-// Implementação do algoritmo de Dijkstra
-void dijkstra(struct Aresta arestas[], int origem)
+// Função auxiliar para imprimir o caminho a partir do array predecessor
+void imprimir_caminho(int predecessor[], int vertice)
 {
-    int dist[NUM_VERTICES];     // Distâncias mínimas do vértice de origem
-    int visitado[NUM_VERTICES]; // Marca se o vértice foi visitado
+    if (predecessor[vertice] == -1)
+    {
+        printf(1, "%d ", vertice);
+        return;
+    }
+    imprimir_caminho(predecessor, predecessor[vertice]);
+    printf(1, "%d ", vertice);
+}
+
+// Implementação do algoritmo de Dijkstra
+void dijkstra(struct Aresta *arestas, int origem, int num_vertices, int num_arestas)
+{
+    int dist[num_vertices];
+    int visitado[num_vertices];
+    // int predecessor[num_vertices];
 
     // Inicializa todas as distâncias como infinito e visitado como falso
-    for (int i = 0; i < NUM_VERTICES; i++)
+    for (int i = 0; i < num_vertices; i++)
     {
         dist[i] = INF;
         visitado[i] = 0;
+        // predecessor[i] = -1;
     }
 
-    dist[origem] = 0; // A distância do vértice de origem para si é 0
+    dist[origem] = 0;
 
     // Calcula o caminho mínimo para todos os vértices
-    for (int count = 0; count < NUM_VERTICES - 1; count++)
+    for (int count = 0; count < num_vertices - 1; count++)
     {
-        int u = min_distancia(dist, visitado); // Pega o vértice com a menor distância
+        int u = min_distancia(dist, visitado, num_vertices);
 
-        visitado[u] = 1; // Marca o vértice como processado
+        visitado[u] = 1;
 
-        // Atualiza os valores das distâncias dos vizinhos do vértice u
-        for (int i = 0; i < NUM_ARESTAS; i++)
+        for (int i = 0; i < num_arestas; i++)
         {
             if (arestas[i].origem == u && !visitado[arestas[i].destino])
             {
@@ -86,30 +102,56 @@ void dijkstra(struct Aresta arestas[], int origem)
                 if (dist[u] != INF && dist[u] + peso < dist[v])
                 {
                     dist[v] = dist[u] + peso;
+                    // predecessor[v] = u;
                 }
             }
         }
     }
-}
 
-// Função simulada CPU-bound
-void cpu_bound_task()
+    /*
+    printf(1, "Caminhos a partir do vértice %d:\n", origem);
+    for (int i = 0; i < num_vertices; i++)
+    {
+        if (i != origem && dist[i] != INF)
+        {
+            printf(1, "Vértice %d (Distância %d): ", i, dist[i]);
+            imprimir_caminho(predecessor, i);
+            printf(1, "\n");
+        }
+    }
+    */
+}
+// Função simula CPU-bound
+void cpu_bound_task(int num_vertices, int num_arestas, int write_fd)
 {
-    struct Aresta arestas[NUM_ARESTAS];
+    int ini = uptime();
+    struct Aresta *arestas = (struct Aresta *)malloc(num_arestas * sizeof(struct Aresta));
+
+    if (arestas == 0)
+    {
+        printf(1, "Erro ao alocar memória para as arestas\n");
+        exit();
+    }
 
     // Inicializa o grafo com arestas aleatórias
-    inicializar_grafo(arestas);
+    inicializar_grafo(arestas, num_arestas, num_vertices);
 
     // Executa o algoritmo de Dijkstra para calcular o caminho mínimo a partir do vértice 0
-    dijkstra(arestas, 0);
+    dijkstra(arestas, 0, num_vertices, num_arestas);
 
-    // Encerra o processo filho após concluir a tarefa
+    free(arestas);
+    int end = uptime();
+    int overhead = end - ini;
+
+    write(write_fd, &overhead, sizeof(overhead));
+
     exit();
 }
 
 // Função simulada IO-bound
-void io_bound_task()
+void io_bound_task(int write_fd)
 {
+    int ini = uptime();
     int fd = open("io_file.txt", O_CREATE | O_RDWR);
     if (fd < 0)
     {
@@ -137,6 +179,9 @@ void io_bound_task()
     close(fd_);
 
     unlink("io_file.txt");
+    int end = uptime();
+    int eficiencia = end - ini;
+    write(write_fd, &eficiencia, sizeof(eficiencia));
     exit();
 }
 
@@ -146,40 +191,92 @@ void run_experiment()
     // medidas vazão
     int tput_min = 0;
     int tput_max = 0;
+    int tput_sum = 0;
+
+    // medidas overhead
+    int over_min = 0;
+    int over_max = 0;
+    int over_sum = 0;
+
+    // medidas eficiência
+    int efic_min = 0;
+    int efic_max = 0;
+    int efic_sum = 0;
 
     for (int rodada = 1; rodada <= NUM_RODADAS; rodada++)
     {
         // vazão
         int inicial_time = uptime();
 
-        int x = 1;
-        int y = 1;
+        int x = 5;
+        int y = 5;
         /*
+        TODO: descomentar e apagar declaração acima de x e y
         int x = CPU_BOUND_MIN + (myrandom() % (CPU_BOUND_MAX - CPU_BOUND_MIN + 1));
         int y = TOTAL_PROC - x;
         */
 
         printf(1, "Rodada %d: %d processos CPU-bound, %d processos IO-bound\n", rodada, x, y);
 
+        // Criação pipe para cpu-bound:
+        int pipe_cpu[2];
+        if (pipe(pipe_cpu) < 0)
+        {
+            printf(1, "Erro ao criar pipe\n");
+            exit();
+        }
+
         // Fork para processos CPU-bound
-        for (int i = 0; i < x; i++) // TODO: mudar para i < x
+        for (int i = 0; i < x; i++)
         {
             int pid = fork();
             if (pid == 0)
             {
-                cpu_bound_task(); // Processo filho
+                close(pipe_cpu[0]);
+                int num_vertices = 100 + (myrandom() % 101);            // Aleatoriamente entre 100 e 200
+                int num_arestas = 50 + (myrandom() % 351);              // Aleatoriamente entre 50 e 400
+                cpu_bound_task(num_vertices, num_arestas, pipe_cpu[1]); // Processo filho
             }
+        }
+        close(pipe_cpu[1]);
+        // Coleta resultados dos processos CPU-bound
+        int overhead_rodada = 0;
+        for (int i = 0; i < x; i++)
+        {
+            int number;
+            read(pipe_cpu[0], &number, sizeof(number)); // Lê do pipe
+            overhead_rodada += number;
+        }
+        close(pipe_cpu[0]);
+
+        // Criação pipe para io-bound:
+        int pipe_io[2];
+        if (pipe(pipe_io) < 0)
+        {
+            printf(1, "Erro ao criar pipe\n");
+            exit();
         }
 
         // Fork para processos IO-bound
-        for (int i = 0; i < y; i++) // TODO mudar para i < y
+        for (int i = 0; i < y; i++)
         {
             int pid = fork();
             if (pid == 0)
             {
-                io_bound_task(); // Processo filho
+                close(pipe_io[0]);
+                io_bound_task(pipe_io[1]); // Processo filho
             }
         }
+        close(pipe_io[1]);
+        // Coleta resultados dos processos io-bound
+        int eficiencia_io_rodada = 0;
+        for (int i = 0; i < y; i++)
+        {
+            int number;
+            read(pipe_io[0], &number, sizeof(number)); // Lê do pipe
+            eficiencia_io_rodada += number;
+        }
+        close(pipe_io[0]);
 
         // Aguarda os processos terminarem
         for (int i = 0; i < TOTAL_PROC; i++)
@@ -190,32 +287,61 @@ void run_experiment()
         // Vazão:
         int end_time = uptime();
         int tput_rodada = end_time - inicial_time;
-
+        tput_sum += tput_rodada;
+        int tput_norm = 0;
         if (tput_rodada < tput_min || rodada == 1)
-        {
             tput_min = tput_rodada;
-        }
 
         if (tput_rodada > tput_max || rodada == 1)
-        {
             tput_max = tput_rodada;
-        }
-        int tput_norm = 0;
         if (tput_max != tput_min)
-        { // Evita divisão por zero
-            tput_norm = 100 - ((tput_rodada - tput_min) * 100 / (tput_max - tput_min));
+        {
+            int tput_temp = tput_sum / rodada;
+            tput_norm = 100 - ((tput_temp - tput_min) * 100 / (tput_max - tput_min));
         }
         else
         {
             tput_norm = 100;
         }
 
-        // Coleta de métricas (simplificado)
-        // Aqui você coletaria as métricas como latência de IO, justiça entre processos, etc.
+        // Overhead:
+        int over_norm = 0;
+        over_sum += overhead_rodada;
+        if (overhead_rodada < over_min || rodada == 1)
+            over_min = overhead_rodada;
+        if (overhead_rodada > over_max || rodada == 1)
+            over_max = overhead_rodada;
+        if (over_min != over_max)
+        {
+            int over_temp = over_sum / rodada;
+            over_norm = 100 - ((over_temp - over_min) * 100 / (over_max - over_min));
+        }
+        else
+        {
+            over_norm = 100;
+        }
 
+        // Eficiência:
+        int efic_norm = 0;
+        efic_sum += eficiencia_io_rodada;
+        if (eficiencia_io_rodada < efic_min || rodada == 1)
+            efic_min = eficiencia_io_rodada;
+        if (eficiencia_io_rodada > efic_max || rodada == 1)
+            efic_max = eficiencia_io_rodada;
+        if (efic_min != efic_max)
+        {
+            int efic_temp = efic_sum / rodada;
+            efic_norm = 100 - ((efic_temp - efic_min) * 100 / (efic_max - efic_min));
+        }
+        else
+        {
+            efic_norm = 100;
+        }
+
+        printf(1, "Vazão normalizada:      %d\n", tput_norm);
+        printf(1, "Overhead normalizado:   %d\n", over_norm);
+        printf(1, "Eficiência normalizada: %d\n", efic_norm);
         printf(1, "Rodada %d finalizada\n", rodada);
-        printf(1, "vazao normalizada rodada: %d\n", tput_norm);
-        printf(1, "vazao rodada: %d\nvazao max: %d\nvazao in: %d\n", tput_rodada, tput_max, tput_min);
     }
 
     exit();
